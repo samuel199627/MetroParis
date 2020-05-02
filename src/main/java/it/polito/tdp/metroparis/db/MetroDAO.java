@@ -16,6 +16,7 @@ import it.polito.tdp.metroparis.model.Linea;
 
 public class MetroDAO {
 
+	//importiamo tutte le fermate dalla rispettiva tabella
 	public List<Fermata> getAllFermate() {
 
 		final String sql = "SELECT id_fermata, nome, coordx, coordy FROM fermata ORDER BY nome ASC";
@@ -43,6 +44,7 @@ public class MetroDAO {
 		return fermate;
 	}
 
+	//importiamo tutte le linee dalla rispettiva tabella
 	public List<Linea> getAllLinee() {
 		final String sql = "SELECT id_linea, nome, velocita, intervallo FROM linea ORDER BY nome ASC";
 
@@ -70,6 +72,9 @@ public class MetroDAO {
 		return linee;
 	}
 
+	//ritorniamo vero se le fermate in parametro sono connesse, cioe' se si trova una linea in connessione
+	//importante l'ordine perche' stiamo creando un grafo diretto
+	//non ci importa quante linee ci siano che connettono, non vogliamo un multigrafo. Ci basta che ci sia una connessione
 	public boolean fermateConnesse(Fermata fp, Fermata fa) {
 		String sql = "SELECT COUNT(*) AS C " + "FROM connessione " + "WHERE id_stazP=? " + "AND id_stazA=?";
 
@@ -87,6 +92,7 @@ public class MetroDAO {
 
 			conn.close();
 
+			//se c'e' almeno una connessione dobbiamo creare l'arco nel grafo
 			return linee >= 1;
 
 		} catch (SQLException e) {
@@ -96,6 +102,13 @@ public class MetroDAO {
 		return false;
 	}
 
+	//data una stazione di partenza, ci facciamo restituire tutte le stazioni di arrivo.
+	//Ci serve passare la mappa di tutte le stazioni (Identity Map) che avevamo perche' nella tabella
+	//connessione abbiamo solo l'id della stazione e quindi ci serve la mappa per estrarre
+	//l'oggetto fermata da aggiungere alla lista di oggetti Fermata che dobbiamo ritornare.
+	//Nella Query mettiamo il distinct perche' nella mappa da cui c'e' il dataset ci sono
+	//archi multiplic, ma noi vogliamo solo tenere una sola connessione orientata tra due
+	//fermate e ce ne freghiamo degli archi multipli; per questo motivo mettiamo DISTINCT.
 	public List<Fermata> fermateSuccessive(Fermata fp, Map<Integer, Fermata> fermateIdMap) {
 		String sql = "SELECT DISTINCT id_stazA " + "FROM connessione " + "WHERE id_stazP=?";
 
@@ -125,6 +138,10 @@ public class MetroDAO {
 		return result;
 	}
 
+	//interroghiamo la tabella Connessione che ci fornisce in ogni linea un arco del grafo
+	//e quindi e' molto diretto interrogare cosi' il database per avere tutti gli archi del grafo che mi servono.
+	//Anche qui abbiamo un bel DISTINCT perche' ci basta una sola connessione orientata tra due fermate
+	//e non vogliamo implementare archi multipli
 	public List<CoppiaFermate> coppieFermate(Map<Integer, Fermata> fermateIdMap) {
 		String sql = "SELECT DISTINCT id_stazP, id_stazA FROM connessione" ;
 		

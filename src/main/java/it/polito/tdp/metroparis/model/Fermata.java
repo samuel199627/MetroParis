@@ -1,5 +1,7 @@
 package it.polito.tdp.metroparis.model;
 
+
+//e' una libreria per importare latitudine e longitudine senza dover fare calcoli a meno
 import com.javadocmd.simplelatlng.LatLng;
 
 public class Fermata {

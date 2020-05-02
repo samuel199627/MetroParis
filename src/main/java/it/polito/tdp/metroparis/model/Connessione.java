@@ -1,4 +1,8 @@
+
 package it.polito.tdp.metroparis.model;
+
+
+//e' la connessione tra due stazioni con una linea
 
 public class Connessione {
 
