@@ -1,18 +1,28 @@
 package it.polito.tdp.metroparis.model;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import java.util.List;
 import java.util.Map;
 
 import org.jgrapht.Graph;
+import org.jgrapht.GraphPath;
 import org.jgrapht.Graphs;
+import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
+import org.jgrapht.event.ConnectedComponentTraversalEvent;
+import org.jgrapht.event.EdgeTraversalEvent;
+import org.jgrapht.event.TraversalListener;
+import org.jgrapht.event.VertexTraversalEvent;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.graph.SimpleDirectedGraph;
+import org.jgrapht.traverse.BreadthFirstIterator;
+import org.jgrapht.traverse.DepthFirstIterator;
+import org.jgrapht.traverse.GraphIterator;
 
 import it.polito.tdp.metroparis.db.MetroDAO;
 
-//IL MODEL E' QUI
+//IL MAIN E' QUI
 
 //Questo progetto serve solo per farci capire come creare un grafo partendo da un database.
 
@@ -120,8 +130,181 @@ public class Model {
 
 	}
 	
+	
+	
+	/**
+	 * Visita l'intero grafo con la strategia Breadth First
+	 * e ritorna l'insieme dei vertici incontrati.
+	 * @param source vertice di partenza della visita
+	 * @return insieme dei vertici incontrati
+	 */
+	public List<Fermata> visitaAmpiezza(Fermata source) {
+		/*
+		 	Partendo da una fermata restituisce una lista di fermate. 
+		 	La visita in ampiezza e' che ad ogni passo visita tutti nodi alla stessa distanza (a livello di 
+		 	numeri di archi che li separa) da quello iniziale e quindi si muove come su cerchi concentrici.
+		 	L'oggetto iteratore per questo tipo di visita e' BreadthFirstIterator e ha bisogno del grafo e del
+		 	vertice di partenza. Funziona come un puntatore e finche' c'e' un successivo continua a muoversi e
+		 	ci salviamo in una lista in ordine i vertici che visita. Provando a stampare questa visita 
+		 	non risulta molto chiaro perche' tutto viene stampato in sequenza e quindi dovremmo aiutarci con
+		 	la cartina in ingresso delle fermate per capire bene i cerchi concentrici dove si separano.
+		*/
+		
+		List<Fermata> visita = new ArrayList<>();
+		
+		GraphIterator<Fermata, DefaultEdge> bfv = new BreadthFirstIterator<>(graph, source);
+		while(bfv.hasNext()) {
+			visita.add( bfv.next() ) ;
+		}
+		
+		return visita ;
+	}
+	
+	// ritorna una mappa del tipo:
+	// <nuovo vertice scoperto, vertice da cui l'ho scoperto>
+	//cioe' <figlio, padre> 
+	/*
+	 	Ci serve una classe anonima inline che implementa l'interfaccia TraversalListener per poter
+	 	avere le informazioni dell'arco (in questo caso e' quello che serve a noi) che l'iteratore sta
+	 	scorrendo. Ogni volta che l'iteratore viene fatto procedere di una posizione abbiamo in pratica
+	 	questo metodo che viene richiamato e possiamo estrarre le informazioni sull'arco che abbiamo
+	 	appena percorso per andare da un vertice al successivo. 
+	 	Facciamo riferimento all'iteratore dell'ispezione in ampiezza,
+	 */
+	public Map<Fermata, Fermata> alberoVisita(Fermata source) {
+		//final ci serve per permetterci di poter fare riferimento ad 'albero' anche dentro alla classe anonima
+		//che ci siamo creati che implementa l'interfaccia TraversalListener.
+		//Essendo l'albero di visita che ci creiamo un HashMap, andiamo a perdere l'ordine di inserimento di 
+		//percorrenza degli altri e ci resteranno solo le percorrenze figlio<-padre
+		final Map<Fermata,Fermata> albero = new HashMap<>();
+		albero.put(source, null) ;
+		
+		GraphIterator<Fermata, DefaultEdge> bfv = new BreadthFirstIterator<>(graph, source);
+		
+		bfv.addTraversalListener(new TraversalListener<Fermata, DefaultEdge>() {
+			@Override
+			public void vertexTraversed(VertexTraversalEvent<Fermata> e) {}
+			
+			@Override
+			public void vertexFinished(VertexTraversalEvent<Fermata> e) {}
+			
+			@Override
+			public void edgeTraversed(EdgeTraversalEvent<DefaultEdge> e) {
+				// la visita sta considerando un nuovo arco.
+				// questo arco ha scoperto un nuovo vertice?
+				// se sì, provenendo da dove?
+				DefaultEdge edge = e.getEdge(); // (a,b) : ho scoperto 'a' partendo da 'b' oppure 'b' da 'a'
+				//sorgente arco
+				Fermata a = graph.getEdgeSource(edge);
+				//destinazione arco
+				Fermata b = graph.getEdgeTarget(edge);
+				
+				/*
+				 	Per aggiungere l'arco che l'iteratore ha appena percorso devo controllare che la sorgente ci sia
+				 	nell'albero di visita e che non ci sia ancora la destinazione in modo che riusciamo a mettere 
+				 	la connessione padre figlio in questione.
+				 	Quello che si vuole evitare e' di non mettere archi per nodi che erano gia' presenti nella visita
+				 	e quindi per nodi che vanno poi cosi' a creare un ciclo. Stessa cosa non vogliamo creare visite
+				 	per nodi che non sono ancora stati visitati (nessuno dei due).
+				 	
+				 	Essendo questo grafo che creiamo orientrato, penso che l'else if non ci vada in realta' perche' 
+				 	qui gli archi sono orientati e quindi dell'arco che abbiamo appena scorso sappiamo perfettamente 
+				 	chi e' la sorgente e chi no.
+				 	Probabilmente la questione e' che potendoci essere l'arco sia in una direzione che nell'altra, io
+				 	potrei gia' avere scorso l'arco nella direzione opposta di quella che sto considerando adesso e 
+				 	quindi non voglio in realta' aggiungere il collegamento o comunque qualcosa del genere.
+				 	
+				 	Bisogna fare attenzione a questa parte e anche nell'esercizio Flights Delay e' stato affrontato.
+				 	
+				 	Il concetto e' che non bisogna salvarsi l'arco se l'arco attuale e' un arco inutile
+					ai fini del percorso, e cioe' quando entrambi i nodi analizzati erano gia' stati 
+					percorsi nella visita, perche' in quel caso stiamo creando un ciclo se aggiungiamo un
+					arco di questo tipo.
+					
+					Alla fine ho commentato l'else if in quanto anche rivedendo la sua videolezione, secondo me il 
+					professore era convinto di avere un grafo non orientato e allora in quel caso non sapendo bene la 
+					direzione con cui stessimo scorrendo un arco bisognava fare quel controllo in piu' come fatto
+					nell'esercizio fatto in aula di flightsDelay.
+				 */
+				if(albero.containsKey(a) && !albero.containsKey(b)) {
+					// a è già noto, quindi ho scoperto b provenendo da a
+					albero.put(b,a) ;
+				} 
+				/*else if(albero.containsKey(b) && !albero.containsKey(a)){
+					// b è già noto, quindi ho scoperto a provenendo da b
+					albero.put(a,b) ;
+				}
+				*/
+			}
+			
+			public void connectedComponentStarted(ConnectedComponentTraversalEvent e) {}
+			
+			public void connectedComponentFinished(ConnectedComponentTraversalEvent e) {}
+		});
+		
+		
+		//ogni volta che next viene richiamato viene analizzato l'arco percorso
+		while(bfv.hasNext()) {
+			bfv.next() ; // estrai l'elemento e ignoralo
+		}
+		
+		return albero ;
+		
+	}
+	
+	/*
+	 	Funziona come la visita in ampiezza solo che qui andiamo piu' in profondita' possibile per poi 
+	 	ritornare indietro ed esplorare un'altra strada.
+	 	Rispetto alla visita in ampiezza cambia l'iteratore in quanto giustamente l'operazione che andiamo
+	 	a fare e' un'altra.
+	 */
+	public List<Fermata> visitaProfondita(Fermata source) {
+		List<Fermata> visita = new ArrayList<>();
+		
+		GraphIterator<Fermata, DefaultEdge> dfv = new DepthFirstIterator<>(graph, source);
+		while(dfv.hasNext()) {
+			visita.add( dfv.next() ) ;
+		}
+		
+		return visita ;
+	}
+	
+	/*
+	 	Cerchiamo i cammini minimi tra due fermate usando Dijkstra che serve per avere tutti i cammini
+	 	minimi per la singola fermata. 
+	 	Con getPath() ci restituisce il percorso minimo tra due punti, mentre con getPaths() ci restituisce
+	 	tutti i cammini minimi per tutti i possibili veritici di arrivo (partendo dalla sorgente).
+	 */
+	public List<Fermata> camminiMinimi(Fermata partenza, Fermata arrivo) {
+		
+		DijkstraShortestPath<Fermata, DefaultEdge> dij = new DijkstraShortestPath<>(graph);
+		
+		GraphPath<Fermata, DefaultEdge> cammino=dij.getPath(partenza, arrivo);
+		
+		
+		return cammino.getVertexList() ;
+	}
+	
 	public static void main(String args[]) {
-		new Model() ;
+		Model m = new Model() ;
+		
+		List<Fermata> visita1 = m.visitaAmpiezza(m.fermate.get(0));
+		System.out.println("\nVISITA IN AMPIEZZA: \n");
+		System.out.println(visita1);
+		
+		List<Fermata> visita2 = m.visitaProfondita(m.fermate.get(0));
+		System.out.println("\nVISITA IN PROFONDITA': \n");
+		System.out.println(visita2);
+
+		Map<Fermata,Fermata> albero = m.alberoVisita(m.fermate.get(0)) ;
+		System.out.println("\nALBERO VISITA: \n");
+		for(Fermata f: albero.keySet()) {
+			System.out.format( "%s <- %s\n", f, albero.get(f)) ;
+		}
+		
+		List<Fermata> cammino=m.camminiMinimi(m.fermate.get(0), m.fermate.get(1));
+		System.out.println("\nCAMMINO MINIMO: \n");
+		System.out.println(cammino);
 	}
 
 }
